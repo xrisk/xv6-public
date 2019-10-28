@@ -67,3 +67,8 @@ int sys_uptime(void) {
   release(&tickslock);
   return xticks;
 }
+
+int sys_halt(void) {
+  outw(0x604, 0x2000);
+  return 0;
+}
