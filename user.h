@@ -1,3 +1,9 @@
+#ifndef _USER_H
+
+#define _USER_H
+
+#include "types.h"
+
 struct stat;
 struct rtcdate;
 

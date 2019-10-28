@@ -1,3 +1,9 @@
+#ifndef _DEFS_H
+
+#define _DEFS_H
+
+#include "types.h"
+
 struct buf;
 struct context;
 struct file;
