@@ -56,14 +56,32 @@ struct proc {
   int killed;                 // If non-zero, have been killed
   struct file *ofile[NOFILE]; // Open files
   struct inode *cwd;          // Current directory
-  char name[16];              // Process name (debugging)
+  char name[16];              // Process ame (debugging)
   int ctime, etime, rtime;
+  int num_run;
+  int current_queue;
+  int ticks[5];
 };
+
+struct proc_stat {
+  int pid;
+  int runtime;
+  int num_run;
+  int current_queue;
+  int ticks[5];
+};
+
+void do_tick(void);
 
 // Process memory is laid out contiguously, low addresses first:
 //   text
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+//
+//
+
+int waitx(int *, int *);
+int pinfo(int pid, struct proc_stat *st);
 
 #endif

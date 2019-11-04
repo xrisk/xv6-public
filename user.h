@@ -2,6 +2,7 @@
 
 #define _USER_H
 
+#include "proc.h"
 #include "types.h"
 
 struct stat;
@@ -30,6 +31,8 @@ char *sbrk(int);
 int sleep(int);
 int uptime(void);
 int halt(void);
+int waitx(int *, int *);
+int getpinfo(int pid, struct proc_stat *st);
 
 // ulib.c
 int stat(const char *, struct stat *);

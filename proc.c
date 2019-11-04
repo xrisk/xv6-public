@@ -1,8 +1,10 @@
-#include "proc.h"
+#include <stddef.h>
+
 #include "defs.h"
 #include "memlayout.h"
 #include "mmu.h"
 #include "param.h"
+#include "proc.h"
 #include "spinlock.h"
 #include "types.h"
 #include "x86.h"
@@ -197,7 +199,7 @@ int fork(void) {
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-
+  np->ctime = ticks;
   release(&ptable.lock);
 
   return pid;
@@ -243,6 +245,9 @@ void exit(void) {
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
+  acquire(&tickslock);
+  curproc->etime = ticks;
+  release(&tickslock);
   sched();
   panic("zombie exit");
 }
@@ -273,6 +278,58 @@ int wait(void) {
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
+
+        p->ctime = 0;
+        p->rtime = 0;
+        p->etime = 0;
+
+        release(&ptable.lock);
+        return pid;
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if (!havekids || curproc->killed) {
+      release(&ptable.lock);
+      return -1;
+    }
+
+    // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    sleep(curproc, &ptable.lock); // DOC: wait-sleep
+  }
+}
+
+int waitx(int *wtime, int *rtime) {
+  struct proc *p;
+  int havekids, pid;
+  struct proc *curproc = myproc();
+
+  acquire(&ptable.lock);
+  for (;;) {
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+      if (p->parent != curproc)
+        continue;
+      havekids = 1;
+      if (p->state == ZOMBIE) {
+        // Found one.
+        pid = p->pid;
+        kfree(p->kstack);
+        p->kstack = 0;
+        freevm(p->pgdir);
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->state = UNUSED;
+        *wtime = p->etime - p->ctime - p->rtime;
+        *rtime = p->rtime;
+
+        p->ctime = 0;
+        p->rtime = 0;
+        p->etime = 0;
+
         release(&ptable.lock);
         return pid;
       }
@@ -308,6 +365,7 @@ void scheduler(void) {
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
+
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
       if (p->state != RUNNABLE)
         continue;
@@ -315,10 +373,12 @@ void scheduler(void) {
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
+
+      /* cprintf("running proc %d on cpu %d\n", p->pid, cpuid()); */
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
-
+      p->num_run++;
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
@@ -329,6 +389,7 @@ void scheduler(void) {
     release(&ptable.lock);
   }
 }
+#endif
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
@@ -485,4 +546,37 @@ void procdump(void) {
     }
     cprintf("\n");
   }
+}
+
+void do_tick() {
+  struct proc *p;
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; ++p) {
+    if (p->state == RUNNING) {
+      p->rtime++;
+    }
+  }
+}
+
+int pinfo(int pid, struct proc_stat *st) {
+  acquire(&ptable.lock);
+  struct proc *p;
+  int i, found = 0;
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; ++p) {
+    if (p->pid == pid) {
+      found = 1;
+      st->pid = pid;
+      st->runtime = ticks - p->ctime;
+      st->num_run = p->num_run;
+      st->current_queue = p->current_queue;
+      for (i = 0; i < 5; i++) {
+        st->ticks[i] = p->ticks[i];
+      }
+      break;
+    }
+  }
+  release(&ptable.lock);
+  if (found)
+    return 0;
+  else
+    return -1;
 }

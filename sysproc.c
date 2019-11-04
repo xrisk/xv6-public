@@ -72,3 +72,18 @@ int sys_halt(void) {
   outw(0x604, 0x2000);
   return 0;
 }
+
+int sys_waitx(void) {
+  int *wtime, *rtime;
+  argptr(0, (void *)&wtime, sizeof(int));
+  argptr(1, (void *)&rtime, sizeof(int));
+  return waitx(wtime, rtime);
+}
+
+int sys_getpinfo(void) {
+  struct proc_stat *st;
+  int pid;
+  argint(0, &pid);
+  argptr(1, (char **)&st, sizeof(struct proc_stat));
+  return pinfo(pid, st);
+}
