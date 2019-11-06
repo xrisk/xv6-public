@@ -32,3 +32,4 @@ SYSCALL(uptime)
 SYSCALL(halt)
 SYSCALL(waitx)
 SYSCALL(getpinfo)
+SYSCALL(set_priority);

@@ -102,6 +102,8 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
+  p->priority = 60;
+
   return p;
 }
 
@@ -184,8 +186,8 @@ int fork(void) {
   np->parent = curproc;
   *np->tf = *curproc->tf;
 
-  // Clear %eax so that fork returns 0 in the child.
-  np->tf->eax = 0;
+  // Clear %eaxso that fork returns 0 in the child.
+  np->tf->eax = 0; 
 
   for (i = 0; i < NOFILE; i++)
     if (curproc->ofile[i])
@@ -354,11 +356,125 @@ int waitx(int *wtime, int *rtime) {
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+//
+
+#ifdef FCFS
+void scheduler(void) {
+  struct cpu *c = mycpu();
+  c->proc = 0;
+
+  cprintf("Using FCFS scheduler\n");
+  for (;;) {
+    // Enable interrupts on this processor.
+    sti();
+
+    // Loop over process table looking for process to run.
+    acquire(&ptable.lock);
+
+    struct proc *to_run = NULL;
+    struct proc *p;
+
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+      if (p->state == RUNNABLE) {
+        if (to_run == NULL || p->ctime < to_run->ctime) {
+          to_run = p;
+        }
+      }
+    }
+
+    p = to_run;
+
+    if (p == NULL) {
+      release(&ptable.lock);
+      continue;
+    }
+
+    // Switch to chosen process.  It is the process's job
+    // to release ptable.lock and then reacquire it
+    // before jumping back to us.
+
+    // cprintf("running proc %d\n", p->pid);
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+    p->num_run++;
+    swtch(&(c->scheduler), p->context);
+    switchkvm();
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+    release(&ptable.lock);
+  }
+}
+#elif defined(PRIORITY)
+
+void scheduler(void) {
+  struct cpu *c = mycpu();
+  c->proc = 0;
+
+  int last_run = -1;
+
+  cprintf("Using PRIORITY scheduler\n");
+
+  for (;;) {
+    sti();
+
+    acquire(&ptable.lock);
+
+    struct proc *hp = NULL;
+
+    // cprintf("last_index: %d\n", last_index);
+    
+    int i;
+
+    for (i = last_run + 1; i < NPROC; i++) {
+      if (ptable.proc[i].state != RUNNABLE) continue;
+      // cprintf("%d: %s\n", i, ptable.proc[i].state);
+
+      if (hp == NULL || ptable.proc[i].priority < hp->priority) {
+        hp = &ptable.proc[i];
+      }
+    }
+
+    for (i = 0; i <= last_run; i++) {
+      if (ptable.proc[i].state != RUNNABLE) continue;
+      if (hp == NULL || ptable.proc[i].priority < hp->priority) {
+        hp = &ptable.proc[i];
+      }
+    }
+
+    if (hp == NULL) {
+      // cprintf("no process found\n");
+      release(&ptable.lock);
+      continue;
+    }
+
+    // cprintf("trying to run pid %d\n", hp->pid);
+
+    // last_index = (hp - ptable.proc + 1) % NPROC;
+    c->proc = hp;
+    switchuvm(hp);
+    hp->state = RUNNING;
+    hp->num_run++;
+    // cprintf("scheduling pid: %d\n", hp->pid);
+    swtch(&(c->scheduler), hp->context);
+    switchkvm();
+
+    c->proc = 0;
+
+    release(&ptable.lock);
+    
+  }
+}
+
+#else
 void scheduler(void) {
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
 
+  cprintf("Using round robin scheduler\n");
   for (;;) {
     // Enable interrupts on this processor.
     sti();
@@ -374,12 +490,13 @@ void scheduler(void) {
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
 
-      /* cprintf("running proc %d on cpu %d\n", p->pid, cpuid()); */
+      // cprintf("running proc %d: %s\n", p->pid, p->name);
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
       p->num_run++;
       swtch(&(c->scheduler), p->context);
+      // cprintf("switched back to kernel\n");
       switchkvm();
 
       // Process is done running for now.
@@ -564,13 +681,17 @@ int pinfo(int pid, struct proc_stat *st) {
   for (p = ptable.proc; p < &ptable.proc[NPROC]; ++p) {
     if (p->pid == pid) {
       found = 1;
-      st->pid = pid;
+      st->pid = p->pid;
+      safestrcpy(st->name, p->name, 16);
       st->runtime = ticks - p->ctime;
       st->num_run = p->num_run;
       st->current_queue = p->current_queue;
       for (i = 0; i < 5; i++) {
         st->ticks[i] = p->ticks[i];
       }
+#ifdef PRIORITY
+      st->priority = p->priority;
+#endif
       break;
     }
   }
@@ -580,3 +701,21 @@ int pinfo(int pid, struct proc_stat *st) {
   else
     return -1;
 }
+
+// #ifdef PRIORITY
+int set_priority(int val) {
+#ifndef PRIORITY
+  panic("set_priority called but PRIORITY scheduler not in use!");
+  return -1;
+#endif
+  struct proc *p= myproc();
+  int prev_p = p->priority;
+  p->priority = val;
+
+  if (val < p->priority) {
+    yield();
+  }
+  return prev_p;
+  // cprintf("setting priority to %d\n", p);
+}
+// #endif

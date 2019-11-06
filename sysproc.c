@@ -87,3 +87,9 @@ int sys_getpinfo(void) {
   argptr(1, (char **)&st, sizeof(struct proc_stat));
   return pinfo(pid, st);
 }
+
+int sys_set_priority(void) {
+  int p;
+  argint(0, &p);
+  set_priority(p);
+}

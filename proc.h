@@ -61,14 +61,19 @@ struct proc {
   int num_run;
   int current_queue;
   int ticks[5];
+  int priority;
 };
 
 struct proc_stat {
   int pid;
+  char name[16];
   int runtime;
   int num_run;
   int current_queue;
   int ticks[5];
+#ifdef PRIORITY
+  int priority;
+#endif
 };
 
 void do_tick(void);

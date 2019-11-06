@@ -138,6 +138,11 @@ int getcmd(char *buf, int nbuf) {
 }
 
 int main(void) {
+
+#ifdef PRIORITY
+  set_priority(20);
+#endif
+
   static char buf[100];
   int fd;
 
