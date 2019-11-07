@@ -233,6 +233,15 @@ void exit(void) {
     }
   }
 
+  /* #ifdef MLFQ */
+  /*   int i; */
+  /*   cprintf("ticks pid %d: ", curproc->pid); */
+  /*   for (i = 0; i < 5; i++) { */
+  /*     cprintf("%d => %d ", i, curproc->ticks[i]); */
+  /*   } */
+  /*   cprintf("\n"); */
+  /* #endif */
+
   begin_op();
   iput(curproc->cwd);
   end_op();
@@ -563,6 +572,7 @@ void scheduler(void) {
     p->num_run++;
     p->allocated = 1 << (p->current_queue);
     p->last_run = ticks;
+    p->ticks[p->current_queue]++;
     swtch(&(c->scheduler), p->context);
     // cprintf("switched back to kernel\n");
     switchkvm();
@@ -773,15 +783,6 @@ void procdump(void) {
         cprintf(" %p", pc[i]);
     }
     cprintf("\n");
-  }
-}
-
-void do_tick() {
-  struct proc *p;
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; ++p) {
-    if (p->state == RUNNING) {
-      p->rtime++;
-    }
   }
 }
 

@@ -62,6 +62,10 @@ void runcmd(struct cmd *cmd) {
   struct pipecmd *pcmd;
   struct redircmd *rcmd;
 
+#ifdef PRIORITY
+  set_priority(10);
+#endif
+
   if (cmd == 0)
     exit();
 

@@ -16,9 +16,10 @@ int main(int argc, char *argv[]) {
     exec(argv[1], argv + 1);
     exit();
   default:;
-    wait();
+    int wtime, rtime;
+    waitx(&wtime, &rtime);
     int end = uptime();
-    printf(1, "run-time: %d\n", end - start);
+    printf(1, "\nw: %d r: %d a: %d\n", wtime, rtime, end - start);
     exit();
   }
   return -1;

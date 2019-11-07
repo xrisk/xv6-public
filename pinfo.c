@@ -16,7 +16,16 @@ int main(int argc, char **argv) {
   printf(1, "name: %s\n", st.name);
   printf(1, "runtime: %d\n", st.runtime);
   printf(1, "num_run: %d\n", st.num_run);
+
+#ifdef MLFQ
   printf(1, "current_queue: %d\n", st.current_queue);
+  int i;
+  printf(1, "ticks: ");
+  for (i = 0; i < 5; i++) {
+    printf(1, "%d => %d, ", i, st.ticks[i]);
+  }
+  printf(1, "\n");
+#endif
 #ifdef PRIORITY
   printf(1, "priority: %d\n", st.priority);
 #endif
