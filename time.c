@@ -6,6 +6,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   int pid;
+  int start = uptime();
 
   switch (pid = fork()) {
   case -1:
@@ -15,12 +16,9 @@ int main(int argc, char *argv[]) {
     exec(argv[1], argv + 1);
     exit();
   default:;
-    int rtime, wtime;
-    if (waitx(&wtime, &rtime) == -1) {
-      printf(1, "no children running\n");
-      return 1;
-    }
-    printf(1, "runtime: %d wait-time: %d\n", rtime, wtime);
+    wait();
+    int end = uptime();
+    printf(1, "run-time: %d\n", end - start);
     exit();
   }
   return -1;

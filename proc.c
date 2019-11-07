@@ -479,18 +479,34 @@ void scheduler(void) {
 #elif defined(MLFQ)
 
 void do_aging() {
+  int x = ticks;
   struct proc *p;
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if (ticks - p->last_run > 100) {
+    if (p->state == RUNNABLE && x - p->last_run > 128) {
       p->current_queue = max(0, p->current_queue - 1);
     }
   }
-  release(&tickslock);
 }
 
-int get_mlfq(int last_index) {
-  int i;
-  int hp = -1;
+int get_mlfq(int last_index, int current_queue) {
+  int i, hp = -1;
+
+  if (current_queue == 4) {
+    for (i = last_index + 1; i < NPROC; i++) {
+      if (ptable.proc[i].state != RUNNABLE)
+        continue;
+      if (ptable.proc[i].current_queue == 4)
+        return i;
+    }
+    for (i = 0; i <= last_index; i++) {
+      if (ptable.proc[i].state != RUNNABLE)
+        continue;
+      if (ptable.proc[i].current_queue == 4)
+        return i;
+    }
+    return -1;
+  }
+
   for (i = last_index + 1; i < NPROC; i++) {
     if (ptable.proc[i].state != RUNNABLE)
       continue;
@@ -516,18 +532,31 @@ void scheduler(void) {
   c->proc = 0;
 
   int last_index = -1;
+  int current_queue = 0;
 
   cprintf("Using MLFQ scheduler\n");
   for (;;) {
     sti();
     acquire(&ptable.lock);
 
-    last_index = get_mlfq(last_index);
+    last_index = get_mlfq(last_index, current_queue);
+
+    if (current_queue == 4 && last_index == -1) {
+      current_queue = 0;
+      release(&ptable.lock);
+      continue;
+    }
+
+    if (current_queue != 4)
+      do_aging();
+
     if (last_index == -1) {
       release(&ptable.lock);
       continue;
     }
+
     p = &ptable.proc[last_index];
+    current_queue = p->current_queue;
     c->proc = p;
     switchuvm(p);
     p->state = RUNNING;
