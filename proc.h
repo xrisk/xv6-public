@@ -59,9 +59,17 @@ struct proc {
   char name[16];              // Process ame (debugging)
   int ctime, etime, rtime;
   int num_run;
+
+#ifdef PRIORITY
+  int priority;
+#endif
+
+#ifdef MLFQ
   int current_queue;
   int ticks[5];
-  int priority;
+  int allocated;
+  int last_run;
+#endif
 };
 
 struct proc_stat {
@@ -88,5 +96,6 @@ void do_tick(void);
 
 int waitx(int *, int *);
 int pinfo(int pid, struct proc_stat *st);
+int set_priority(int);
 
 #endif

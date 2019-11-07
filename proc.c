@@ -9,6 +9,8 @@
 #include "types.h"
 #include "x86.h"
 
+#define min(x, y) ((x) < (y) ? (x) : (y))
+#define max(x, y) ((x) > (y) ? (x) : (y))
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -102,7 +104,12 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
+#ifdef PRIORITY
   p->priority = 60;
+#endif
+#ifdef MLFQ
+  p->current_queue = 0;
+#endif
 
   return p;
 }
@@ -187,7 +194,7 @@ int fork(void) {
   *np->tf = *curproc->tf;
 
   // Clear %eaxso that fork returns 0 in the child.
-  np->tf->eax = 0; 
+  np->tf->eax = 0;
 
   for (i = 0; i < NOFILE; i++)
     if (curproc->ofile[i])
@@ -425,11 +432,12 @@ void scheduler(void) {
     struct proc *hp = NULL;
 
     // cprintf("last_index: %d\n", last_index);
-    
+
     int i;
 
     for (i = last_run + 1; i < NPROC; i++) {
-      if (ptable.proc[i].state != RUNNABLE) continue;
+      if (ptable.proc[i].state != RUNNABLE)
+        continue;
       // cprintf("%d: %s\n", i, ptable.proc[i].state);
 
       if (hp == NULL || ptable.proc[i].priority < hp->priority) {
@@ -438,7 +446,8 @@ void scheduler(void) {
     }
 
     for (i = 0; i <= last_run; i++) {
-      if (ptable.proc[i].state != RUNNABLE) continue;
+      if (ptable.proc[i].state != RUNNABLE)
+        continue;
       if (hp == NULL || ptable.proc[i].priority < hp->priority) {
         hp = &ptable.proc[i];
       }
@@ -464,7 +473,80 @@ void scheduler(void) {
     c->proc = 0;
 
     release(&ptable.lock);
-    
+  }
+}
+
+#elif defined(MLFQ)
+
+void do_aging() {
+  struct proc *p;
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (ticks - p->last_run > 100) {
+      p->current_queue = max(0, p->current_queue - 1);
+    }
+  }
+  release(&tickslock);
+}
+
+int get_mlfq(int last_index) {
+  int i;
+  int hp = -1;
+  for (i = last_index + 1; i < NPROC; i++) {
+    if (ptable.proc[i].state != RUNNABLE)
+      continue;
+    if (hp == -1 ||
+        ptable.proc[i].current_queue < ptable.proc[hp].current_queue) {
+      hp = i;
+    }
+  }
+  for (i = 0; i <= last_index; i++) {
+    if (ptable.proc[i].state != RUNNABLE)
+      continue;
+    if (hp == -1 ||
+        ptable.proc[i].current_queue < ptable.proc[hp].current_queue) {
+      hp = i;
+    }
+  }
+  return hp;
+}
+
+void scheduler(void) {
+  struct proc *p;
+  struct cpu *c = mycpu();
+  c->proc = 0;
+
+  int last_index = -1;
+
+  cprintf("Using MLFQ scheduler\n");
+  for (;;) {
+    sti();
+    acquire(&ptable.lock);
+
+    last_index = get_mlfq(last_index);
+    if (last_index == -1) {
+      release(&ptable.lock);
+      continue;
+    }
+    p = &ptable.proc[last_index];
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+    p->num_run++;
+    p->allocated = 1 << (p->current_queue);
+    p->last_run = ticks;
+    swtch(&(c->scheduler), p->context);
+    // cprintf("switched back to kernel\n");
+    switchkvm();
+
+    if (p->allocated <= 0) {
+      p->current_queue = min(p->current_queue + 1, 4);
+    }
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+
+    release(&ptable.lock);
   }
 }
 
@@ -677,7 +759,7 @@ void do_tick() {
 int pinfo(int pid, struct proc_stat *st) {
   acquire(&ptable.lock);
   struct proc *p;
-  int i, found = 0;
+  int found = 0;
   for (p = ptable.proc; p < &ptable.proc[NPROC]; ++p) {
     if (p->pid == pid) {
       found = 1;
@@ -685,10 +767,13 @@ int pinfo(int pid, struct proc_stat *st) {
       safestrcpy(st->name, p->name, 16);
       st->runtime = ticks - p->ctime;
       st->num_run = p->num_run;
+#ifdef MLFQ
+      int i;
       st->current_queue = p->current_queue;
       for (i = 0; i < 5; i++) {
         st->ticks[i] = p->ticks[i];
       }
+#endif
 #ifdef PRIORITY
       st->priority = p->priority;
 #endif
@@ -704,11 +789,8 @@ int pinfo(int pid, struct proc_stat *st) {
 
 // #ifdef PRIORITY
 int set_priority(int val) {
-#ifndef PRIORITY
-  panic("set_priority called but PRIORITY scheduler not in use!");
-  return -1;
-#endif
-  struct proc *p= myproc();
+#ifdef PRIORITY
+  struct proc *p = myproc();
   int prev_p = p->priority;
   p->priority = val;
 
@@ -716,6 +798,8 @@ int set_priority(int val) {
     yield();
   }
   return prev_p;
-  // cprintf("setting priority to %d\n", p);
+#else
+  panic("set_priority called but priorty scheduler not in use");
+#endif
 }
 // #endif

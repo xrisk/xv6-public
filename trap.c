@@ -14,6 +14,8 @@ extern uint vectors[]; // in vectors.S: array of 256 entry pointers
 struct spinlock tickslock;
 uint ticks;
 
+#define min(x, y) ((x) < (y) ? (x) : (y));
+
 void tvinit(void) {
   int i;
 
@@ -92,13 +94,21 @@ void trap(struct trapframe *tf) {
   if (myproc() && myproc()->killed && (tf->cs & 3) == DPL_USER)
     exit();
 
-  // Force process to give up CPU on clock tick.
-  // If interrupts were on while locks held, would need to check nlock.
+    // Force process to give up CPU on clock tick.
+    // If interrupts were on while locks held, would need to check nlock.
 
 #ifndef FCFS
   if (myproc() && myproc()->state == RUNNING &&
-      tf->trapno == T_IRQ0 + IRQ_TIMER)
+      tf->trapno == T_IRQ0 + IRQ_TIMER) {
+#ifndef MLFQ
     yield();
+#else
+    myproc()->allocated--;
+    if (myproc()->allocated <= 0) {
+      yield();
+    }
+#endif
+  }
 #endif
 
   // Check if the process has been killed since we yielded

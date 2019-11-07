@@ -19,6 +19,6 @@ int main(int argc, char **argv) {
   printf(1, "current_queue: %d\n", st.current_queue);
 #ifdef PRIORITY
   printf(1, "priority: %d\n", st.priority);
-#endif 
+#endif
   exit();
 }

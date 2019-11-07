@@ -91,5 +91,5 @@ int sys_getpinfo(void) {
 int sys_set_priority(void) {
   int p;
   argint(0, &p);
-  set_priority(p);
+  return set_priority(p);
 }
